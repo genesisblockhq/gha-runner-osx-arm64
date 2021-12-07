@@ -17,7 +17,7 @@ LAYOUT_DIR="$SCRIPT_DIR/../_layout"
 DOWNLOAD_DIR="$SCRIPT_DIR/../_downloads/netcore2x"
 PACKAGE_DIR="$SCRIPT_DIR/../_package"
 DOTNETSDK_ROOT="$SCRIPT_DIR/../_dotnetsdk"
-DOTNETSDK_VERSION="3.1.302"
+DOTNETSDK_VERSION="6.0.100"
 DOTNETSDK_INSTALLDIR="$DOTNETSDK_ROOT/$DOTNETSDK_VERSION"
 RUNNER_VERSION=$(cat runnerversion)
 
@@ -49,6 +49,12 @@ elif [[ "$CURRENT_PLATFORM" == 'linux' ]]; then
     fi
 elif [[ "$CURRENT_PLATFORM" == 'darwin' ]]; then
     RUNTIME_ID='osx-x64'
+    if command -v uname > /dev/null; then
+        CPU_NAME=$(uname -m)
+        if [[ "$CPU_NAME" == "arm64" ]]; then
+            RUNTIME_ID="osx-arm64"
+	    fi
+    fi
 fi
 
 if [[ -n "$DEV_TARGET_RUNTIME" ]]; then
@@ -58,7 +64,7 @@ fi
 # Make sure current platform support publish the dotnet runtime
 # Windows can publish win-x86/x64
 # Linux can publish linux-x64/arm/arm64
-# OSX can publish osx-x64
+# OSX can publish osx-x64/arm64
 if [[ "$CURRENT_PLATFORM" == 'windows' ]]; then
     if [[ ("$RUNTIME_ID" != 'win-x86') && ("$RUNTIME_ID" != 'win-x64') ]]; then
         echo "Failed: Can't build $RUNTIME_ID package $CURRENT_PLATFORM" >&2
@@ -70,7 +76,7 @@ elif [[ "$CURRENT_PLATFORM" == 'linux' ]]; then
        exit 1
     fi
 elif [[ "$CURRENT_PLATFORM" == 'darwin' ]]; then
-    if [[ ("$RUNTIME_ID" != 'osx-x64') ]]; then
+    if [[ ("$RUNTIME_ID" != 'osx-x64') && ("$RUNTIME_ID" != 'osx-arm64') ]]; then
        echo "Failed: Can't build $RUNTIME_ID package $CURRENT_PLATFORM" >&2
        exit 1
     fi
@@ -106,16 +112,20 @@ function heading()
     echo "-----------------------------------------"
 }
 
+DOTNET60_OPTIONS='-p:WarningsNotAsErrors="CA1416,CA2200,CS0618,SYSLIB0013,SYSLIB0014"'
+DOTNET60_BUILD_OPTIONS_ESCAPED_TEMP="${DOTNET60_OPTIONS//,/%2c}"
+DOTNET60_BUILD_OPTIONS_ESCAPED="${DOTNET60_BUILD_OPTIONS_ESCAPED_TEMP//\"/\\%22}"
+
 function build ()
 {
     heading "Building ..."
-    dotnet msbuild -t:Build -p:PackageRuntime="${RUNTIME_ID}" -p:BUILDCONFIG="${BUILD_CONFIG}" -p:RunnerVersion="${RUNNER_VERSION}" ./dir.proj || failed build
+    dotnet msbuild -t:Build $DOTNET60_OPTIONS -p:PackageRuntime="${RUNTIME_ID}" -p:BUILDCONFIG="${BUILD_CONFIG}" -p:RunnerVersion="${RUNNER_VERSION}" ./dir.proj || failed build
 }
 
 function layout ()
 {
     heading "Create layout ..."
-    dotnet msbuild -t:layout -p:PackageRuntime="${RUNTIME_ID}" -p:BUILDCONFIG="${BUILD_CONFIG}" -p:RunnerVersion="${RUNNER_VERSION}" ./dir.proj || failed build
+    dotnet msbuild -t:layout $DOTNET60_OPTIONS -p:PackageRuntime="${RUNTIME_ID}" -p:BUILDCONFIG="${BUILD_CONFIG}" -p:RunnerVersion="${RUNNER_VERSION}" ./dir.proj || failed build
 
     #change execution flag to allow running with sudo
     if [[ ("$CURRENT_PLATFORM" == "linux") || ("$CURRENT_PLATFORM" == "darwin") ]]; then
@@ -137,7 +147,7 @@ function runtest ()
         ulimit -n 1024
     fi
 
-    dotnet msbuild -t:test -p:PackageRuntime="${RUNTIME_ID}" -p:BUILDCONFIG="${BUILD_CONFIG}" -p:RunnerVersion="${RUNNER_VERSION}" ./dir.proj || failed "failed tests" 
+    dotnet msbuild -t:test -p:DOTNET60_BUILD_OPTIONS="${DOTNET60_BUILD_OPTIONS_ESCAPED}" -p:PackageRuntime="${RUNTIME_ID}" -p:BUILDCONFIG="${BUILD_CONFIG}" -p:RunnerVersion="${RUNNER_VERSION}" ./dir.proj || failed "failed tests" 
 }
 
 function package ()
