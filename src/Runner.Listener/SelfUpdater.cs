@@ -558,6 +558,10 @@ namespace GitHub.Runner.Listener
             {
                 throw new NotSupportedException($"{archiveFile}");
             }
+            else
+            {
+                throw new NotSupportedException($"{archiveFile}");
+            }
 
             stopWatch.Stop();
             Trace.Info($"Finished getting latest runner package at: {extractDirectory}.");
