@@ -109,6 +109,7 @@ namespace GitHub.Runner.Worker
         void ForceTaskComplete();
         void RegisterPostJobStep(IStep step);
         void PublishStepTelemetry();
+        void WriteWebhookPayload();
     }
 
     public sealed class ExecutionContext : RunnerService, IExecutionContext
@@ -550,10 +551,15 @@ namespace GitHub.Runner.Worker
                 issue.Message = issue.Message[.._maxIssueMessageLength];
             }
 
+            // Tracking the line number (logFileLineNumber) and step number (stepNumber) for each issue that gets created
+            // Actions UI from the run summary page use both values to easily link to an exact locations in logs where annotations originate from
+            if (_record.Order != null)
+            {
+                issue.Data["stepNumber"] = _record.Order.ToString();
+            }
+
             if (issue.Type == IssueType.Error)
             {
-                // tracking line number for each issue in log file
-                // log UI use this to navigate from issue to log
                 if (!string.IsNullOrEmpty(logMessage))
                 {
                     long logLineNumber = Write(WellKnownTags.Error, logMessage);
@@ -569,8 +575,6 @@ namespace GitHub.Runner.Worker
             }
             else if (issue.Type == IssueType.Warning)
             {
-                // tracking line number for each issue in log file
-                // log UI use this to navigate from issue to log
                 if (!string.IsNullOrEmpty(logMessage))
                 {
                     long logLineNumber = Write(WellKnownTags.Warning, logMessage);
@@ -586,9 +590,6 @@ namespace GitHub.Runner.Worker
             }
             else if (issue.Type == IssueType.Notice)
             {
-
-                // tracking line number for each issue in log file
-                // log UI use this to navigate from issue to log
                 if (!string.IsNullOrEmpty(logMessage))
                 {
                     long logLineNumber = Write(WellKnownTags.Notice, logMessage);
@@ -988,6 +989,24 @@ namespace GitHub.Runner.Worker
             else
             {
                 Trace.Info($"Step telemetry has already been published.");
+            }
+        }
+
+        public void WriteWebhookPayload()
+        {
+            // Makes directory for event_path data
+            var tempDirectory = HostContext.GetDirectory(WellKnownDirectory.Temp);
+            var workflowDirectory = Path.Combine(tempDirectory, "_github_workflow");
+            Directory.CreateDirectory(workflowDirectory);
+            var gitHubEvent = GetGitHubContext("event");
+
+            // adds the GitHub event path/file if the event exists
+            if (gitHubEvent != null)
+            {
+                var workflowFile = Path.Combine(workflowDirectory, "event.json");
+                Trace.Info($"Write event payload to {workflowFile}");
+                File.WriteAllText(workflowFile, gitHubEvent, new UTF8Encoding(false));
+                SetGitHubContext("event_path", workflowFile);
             }
         }
 
